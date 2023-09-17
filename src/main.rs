@@ -26,12 +26,66 @@ struct User {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(try_from = "String")]
+pub struct UserName(String);
+
+impl TryFrom<String> for UserName {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.len() > 100 {
+            Err("Name too long")
+        } else {
+            Ok(UserName(value))
+        }
+    }
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(try_from = "String")]
+pub struct UserNick(String);
+
+impl TryFrom<String> for UserNick {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.len() > 32 {
+            Err("Nick too long")
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(try_from = "String")]
+pub struct UserTech(String);
+
+impl TryFrom<String> for UserTech {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.len() > 32 {
+            Err("Tech too long")
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
+impl From<UserTech> for String {
+    fn from(value: UserTech) -> Self {
+        value.0
+    }
+}
+
+#[derive(Clone, Deserialize)]
 struct NewUser {
-    pub name: String,
-    pub nick: String,
+    pub name: UserName,
+    pub nick: UserNick,
     #[serde(with = "date_format")]
     pub birth_data: Date,
-    pub stack: Option<Vec<String>>,
+    pub stack: Option<Vec<UserTech>>,
 }
 
 type AppState = Arc<RwLock<HashMap<Uuid, User>>>;
@@ -62,8 +116,8 @@ async fn search_user(
 
 async fn find_user(
     State(users): State<AppState>, 
-    Path(user_id): Path<Uuid>) -> impl IntoResponse 
-    {
+    Path(user_id): Path<Uuid>) -> impl IntoResponse
+{
     match users.read().await.get(&user_id) {
         Some(user) => Ok(Json(user.clone())),
         None => Err(StatusCode::NOT_FOUND)
@@ -71,19 +125,19 @@ async fn find_user(
 }
 
 async fn create_user(
-    State(users): State<AppState>, 
-    Json(new_person): Json<NewUser>) -> impl IntoResponse 
-    {
+    State(users): State<AppState>,
+    Json(new_user): Json<NewUser>,
+) -> Result<(StatusCode, Json<User>), StatusCode> {
     let user = User {
         id: Uuid::now_v7(),
-        name: new_person.name,
-        nick: new_person.nick,
-        birth_data: new_person.birth_data,
-        stack: new_person.stack,
+        name: new_user.name.0,
+        nick: new_user.nick.0,
+        birth_data: new_user.birth_data,
+        stack: new_user.stack.map(|stack| stack.into_iter().map(String::from).collect()),
     };
 
     users.write().await.insert(user.id, user.clone());
-    (StatusCode::CREATED, Json(user))
+    Ok((StatusCode::CREATED, Json(user)))
 }
 
 async fn count_user(
